@@ -30,6 +30,6 @@ Copy the contents of upsert_tester.sql to create a sample source and target tabl
 
 This is a work in progress. Currently, there are limitations that need to be improved on before this can be used in a real-world environment:
 
-- All columns have to be text when in reality some of the applicable fields will be integer or timestamp
+- Join columns have to be of matching datatypes--I haven't made up my mind whether this should be enforced or should be flexible
 - The target table has to have the exact same schema as the source--for example, this assumes the target table includes the DML indicator when a real target table would not--because the INSERT uses a SELECT statement with a wildcard; this will eventually have to be changed... somehow... maybe with parameters? I've tried using the system views/tables to identify the list of column names, but that doesn't seem viable as they can't be used in any query that has a segment that needs to run on the comopute node (ie every query) because the system views/tables are in the leader node
 - The DML indicator currently only recognizes the values 'I', 'U', and 'D'--this will likely have to be parameterized
