@@ -33,3 +33,4 @@ This is a work in progress. Currently, there are limitations that need to be imp
 - Join columns have to be of matching datatypes--I haven't made up my mind whether this should be enforced or should be flexible
 - The matching columns between the source and target tables have to have the same names----I haven't made up my mind whether this should be enforced or should be flexible
 - The DML indicator currently only recognizes the values 'I', 'U', and 'D'--this will likely have to be parameterized
+- Currently requires all three matching fields (primary key, version id, dml indicator). Until this is addressed, since these are just column values, you can just plug in whatever column names you want as long as they exist in both source and target tables.
