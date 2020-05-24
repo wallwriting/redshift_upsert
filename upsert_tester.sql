@@ -7,7 +7,8 @@ version   varchar(10),
 dml_indicator varchar(10)
 );
 
-create or replace table src_test
+drop table if exists src_test;
+create table src_test
 (id   varchar(50),
 txt_value   varchar(50),
 version   varchar(10),
