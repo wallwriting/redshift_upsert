@@ -1,14 +1,19 @@
 # redshift_upsert
 This creates a stored procedure that runs an upsert to a table
 
-The stored proc assumes that the transformation process has already happened, and that the results were loaded into a staging table (the source) that has the same schema as the target table.
-
-It requires the table have the following attributes:
+This is intended to be a "last mile" process, meaning the rest of the transformation has aleady happened (either in database or via a separate ETL engine), with the results loaded into a staging table that has the same (or nearly the same) schema as the target. In order to do so, it assumes you have the following information:
   - Primary Key
-  - Version Id (eg a sequence number or a timestamp)
+  - Version Id (eg a sequence number or a timestamp)--this handles cases where the same record has multiple updates
   - DML indicator (eg 'I' for insert, 'U' for update, 'D' for delete)
 
-It has the following parameters:
+Some of these can be derived, like using a file create timestamp for the version id, but all three are necessary in order to do a merge or upsert, otherwise compromises will have to be made:
+  - missing the DML indicator means you will not be able to tackle deletes, only inserts and updates
+  - missing the version id means you can't handle situations where the source row gets updated more than once per batch
+  - missing the primary key means you can only do inserts
+
+In other words, if you don't have these three attributes, you're going to have problems whether you use this stored procedure or any tool to handle merges.
+
+The stored procedure has the following parameters:
   - target table name
   - target primary key column name
   - target version id column name
@@ -30,7 +35,12 @@ Copy the contents of upsert_tester.sql to create a sample source and target tabl
 
 This is a work in progress. Currently, there are limitations that need to be improved on before this can be used in a real-world environment:
 
-- Join columns have to be of matching datatypes--I haven't made up my mind whether this should be enforced or should be flexible
-- The matching columns between the source and target tables have to have the same names----I haven't made up my mind whether this should be enforced or should be flexible
+- Join columns have to be of matching datatypes*
+- The matching columns between the source and target tables have to have the same names*
+- You can only have a single column key*+
 - The DML indicator currently only recognizes the values 'I', 'U', and 'D'--this will likely have to be parameterized
-- Currently requires all three matching fields (primary key, version id, dml indicator). Until this is addressed, since these are just column values, you can just plug in whatever column names you want as long as they exist in both source and target tables.
+- Currently requires all three matching fields (primary key, version id, dml indicator) to have arguments passed. Until this is addressed, since these are just column values, you can just plug in whatever column names you want as long as they exist in both source and target tables.
+
+
+* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice
++ As a workaround, you can manufacture a column in both the stage and target tables that concatenate the compound key
