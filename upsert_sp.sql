@@ -1,14 +1,73 @@
 CREATE OR REPLACE PROCEDURE upsert_sp(target_table INOUT character varying, target_key INOUT character varying, target_version INOUT character varying, source_table INOUT character varying, source_key INOUT character varying, source_version INOUT character varying, source_dml_indicator INOUT character varying)
-/*(target_table, target_key, target_version, source_table, source_key, source_version)*/
+--drop procedure PROCEDURE upsert_sp_test(target_table INOUT character varying, target_key INOUT character varying, target_version INOUT character varying, source_table INOUT character varying, source_key INOUT character varying, source_version INOUT character varying, source_dml_indicator INOUT character varying)
 AS $$
-DECLARE 
+DECLARE
     insert_var varchar(20);
     update_var varchar(20);
-
+    col_nm_cursor record;
+    col_txt_var varchar(100);
+    colArrayVar character varying;
+    colArrayPrefixVar character varying;
 BEGIN
+    /*creates the temp table that will hold the column list*/
+    drop table if exists tmp_column_name_list_table_4383acad9Dk2;
+    create temp table tmp_column_name_list_table_4383acad9Dk2
+        (test_col varchar(2500));
+    insert into tmp_column_name_list_table_4383acad9Dk2 select '';
+
+    /*loops through the list of columns to 
+    concatenate the column names into one list*/
+    FOR col_nm_cursor IN 
+                    /*gets column list from the system table
+                    The join ensures only the matching column
+                    names are involved in the upsert*/
+                    SELECT 
+                        tgt.column_name
+                    FROM
+                        (
+                            SELECT
+                                cast(column_name as varchar(250)) as column_name
+                            from 
+                                information_schema.columns 
+                            WHERE 
+                                table_name = target_table
+                        ) tgt
+                    JOIN
+                        (
+                            SELECT
+                                cast(column_name as varchar(250)) as column_name
+                            from 
+                                information_schema.columns 
+                            WHERE 
+                                table_name = source_table
+                        ) src
+                        ON tgt.column_name = src.column_name
+        LOOP
+          /*converts the cursor to a string*/
+          col_txt_var = col_nm_cursor;
+        
+          /*appends the column name list with the name from the current loop*/
+          update tmp_column_name_list_table_4383acad9Dk2
+          set test_col = CASE 
+                              /*skips the blank column name in the first pass*/
+                              WHEN test_col = '' 
+                                /*string function removes the leading and trailing parentheses*/
+                                THEN 'src.' || substring(col_txt_var, 2, (select len(col_txt_var) - 2)) 
+                                /*adds a comma in between the values*/
+                                ELSE test_col || ', ' || 'src.' || substring(col_txt_var, 2, (select len(col_txt_var) - 2)) 
+                          END;
+        END LOOP;
+
+        colArrayPrefixVar = (select * FROM tmp_column_name_list_table_4383acad9Dk2);
+        /*a second version of the column list that removes the table prefix*/
+        colArrayVar = (SELECT REPLACE(colArrayPrefixVar, 'src.', ''));
+
 insert_var = 'I';
 update_var = 'U';
 
+/*This ends the column list generating section*/
+
+/*This starts the actual delete and insert*/
 EXECUTE
 /*deletes any existing rows that will change in the batch*/
 'DELETE
@@ -22,7 +81,6 @@ FROM
         SELECT
             maxtgt.' || target_key ||
         ' FROM
-
             /*target table id and max version number*/
             (
                 SELECT
@@ -48,10 +106,11 @@ FROM
 EXECUTE
 '/*inserts source data into target table, only inserting new rows*/
 INSERT INTO ' || target_table ||
-    ' SELECT
+    ' (' || colArrayVar || ') 
+     SELECT
 		/*replace this with whatever you need to insert*/
-			src.* 
-	FROM
+		 ' || colArrayPrefixVar ||
+	' FROM
 		/*source*/
 		 ' || source_table || ' src
 	/*gets the most recent change for a given record
@@ -91,4 +150,3 @@ INSERT INTO ' || target_table ||
 END;
 $$ LANGUAGE plpgsql
 SECURITY INVOKER;
-
