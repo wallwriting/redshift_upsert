@@ -43,4 +43,5 @@ This is a work in progress. Currently, there are limitations that need to be imp
 
 
 [* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice]
+
 [+ As a workaround, you can manufacture a column in both the stage and target tables that concatenate the compound key]
