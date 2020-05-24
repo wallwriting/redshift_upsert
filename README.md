@@ -42,5 +42,5 @@ This is a work in progress. Currently, there are limitations that need to be imp
 - Currently requires all three matching fields (primary key, version id, dml indicator) to have arguments passed. Until this is addressed, since these are just column values, you can just plug in whatever column names you want as long as they exist in both source and target tables.
 
 
-* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice
-+ As a workaround, you can manufacture a column in both the stage and target tables that concatenate the compound key
+[* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice]
+[+ As a workaround, you can manufacture a column in both the stage and target tables that concatenate the compound key]
