@@ -38,10 +38,16 @@ This is a work in progress. Currently, there are limitations that need to be imp
 - Join columns have to be of matching datatypes*
 - The matching columns between the source and target tables have to have the same names*
 - You can only have a single column key*+
+- There is currently no error handling of any kind
 - The DML indicator currently only recognizes the values 'I', 'U', and 'D'--this will likely have to be parameterized
-- Currently requires all three matching fields (primary key, version id, dml indicator) to have arguments passed. Until this is addressed, since these are just column values, you can just plug in whatever column names you want as long as they exist in both source and target tables.
+- Currently requires all three matching fields (primary key, version id, dml indicator) to have arguments passed. Use these workarounds when you don't have them:
+    - If there is no dml indicator, pass the value 'X' for the argument (case doesn't matter).
+    - If there is no version id, pass the same vaule for key.**
 
 
 [* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice]
 
 [+ As a workaround, you can manufacture a column in both the stage and target tables that concatenate the compound key]
+
+[** If the source system sends multiple transactions on the same record within one batch AND it doesn't provide a version id,
+this will insert all versions of the record into the target. Frankly, this situation shouldn't be happening. You need to have a conversation with the team that runs the source system and tell them you need some type of versioning. Otherwise the only option is to subquery the source table with a MAX() on all non-key columns, GROUP BY the key column. This will at least avoid duplicates, but there is no way to know if the correct version of the record was selected for insert. This is not a flaw in the code; it is a flaw in the operational process. Putting he MAX() function in the main branch script would negatively impact performance for the normal case just to provide a workaround for this exception case. For the time being, this will not be included in the main branch. After AQUA is released, this will be revisited as that feature could mitigate performance issues with the MAX().]
