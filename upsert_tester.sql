@@ -30,7 +30,7 @@ and an insert where the version is incorrect
 (it reused the original version number)*/
 insert into src_test values ('123', '1st update', '2', 'U');
 insert into src_test values ('456', '1st update', '2', 'U');
-insert into src_test values ('456', '2st update', '3', 'U');
+insert into src_test values ('456', '2nd update', '3', 'U');
 insert into src_test values ('789', 'delete', '2', 'D');
 insert into src_test values ('101112', 'accidental second insert', '1', 'I');
 
