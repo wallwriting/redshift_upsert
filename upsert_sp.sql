@@ -34,6 +34,8 @@ BEGIN
                                 information_schema.columns 
                             WHERE 
                                 table_name = target_table
+			    ORDER BY
+				1
                         ) tgt
                     JOIN
                         (
@@ -43,6 +45,8 @@ BEGIN
                                 information_schema.columns 
                             WHERE 
                                 table_name = source_table
+			    ORDER BY
+				1
                         ) src
                         ON tgt.column_name = src.column_name
         LOOP
