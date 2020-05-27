@@ -1,27 +1,31 @@
-CREATE OR REPLACE PROCEDURE upsert_sp(target_table INOUT character varying, target_key INOUT character varying, target_version INOUT character varying, source_table INOUT character varying, source_key INOUT character varying, source_version INOUT character varying, source_dml_indicator INOUT character varying)
---drop procedure PROCEDURE upsert_sp(target_table INOUT character varying, target_key INOUT character varying, target_version INOUT character varying, source_table INOUT character varying, source_key INOUT character varying, source_version INOUT character varying, source_dml_indicator INOUT character varying)
+CREATE OR REPLACE PROCEDURE sp_upsert(target_table IN CHARACTER VARYING, target_key IN CHARACTER VARYING, target_version IN CHARACTER VARYING, source_table IN CHARACTER VARYING, source_key IN CHARACTER VARYING, source_version IN CHARACTER VARYING, source_dml_indicator IN CHARACTER VARYING)
+--DROP PROCEDURE upsert_sp(target_table IN CHARACTER VARYING, target_key IN CHARACTER VARYING, target_version IN CHARACTER VARYING, source_table IN CHARACTER VARYING, source_key IN CHARACTER VARYING, source_version IN CHARACTER VARYING, source_dml_indicator IN CHARACTER VARYING)
  
 AS $$
 DECLARE
-    insert_var character varying;
-    update_var character varying;
-    col_nm_cursor record;
-    col_txt_var character varying;
-    colArrayVar character varying;
-    colArrayPrefixVar character varying;
-    finishInsertVar character varying;
-    finishDeleteVar character varying;
+    insert_var CHARACTER VARYING;
+    update_var CHARACTER VARYING;
+    col_nm_cursor RECORD;
+    col_txt_var CHARACTER VARYING;
+    colArrayVar CHARACTER VARYING;
+    colArrayPrefixVar CHARACTER VARYING;
+    finishInsertVar CHARACTER VARYING;
+    finishDeleteVar CHARACTER VARYING;
 BEGIN
-    /*creates the temp table that will hold the column list*/
-    drop table if exists tmp_column_name_list_table_4383acad9Dk2;
-    create temp table tmp_column_name_list_table_4383acad9Dk2
-        (test_col varchar(2500));
-    insert into tmp_column_name_list_table_4383acad9Dk2 select '';
+    /*Creates the temp table that will hold the column list. Table has arbitrary characters at the end
+    to decrease the chance of duplicates. This value is not parameterized because it would require the
+    queries to run AS an EXECUTE statement with quotes everywhere, like we are forced to do with the
+    DELETE and INSERT statements. Convenience was traded for readability. To replace the table name,
+    just do a find/replace in a text editor*/ 
+    DROP TABLE IF EXISTS tmp_column_name_list_table_4383acad9Dk2;
+    CREATE TEMP TABLE tmp_column_name_list_table_4383acad9Dk2
+        (test_col VARCHAR(2500));
+    INSERT INTO tmp_column_name_list_table_4383acad9Dk2 SELECT '';
 
     /*loops through the list of columns to 
     concatenate the column names into one list*/
     FOR col_nm_cursor IN 
-                    /*gets column list from the system table
+                    /*gets column list FROM the system table
                     The join ensures only the matching column
                     names are involved in the upsert*/
                     SELECT 
@@ -29,43 +33,46 @@ BEGIN
                     FROM
                         (
                             SELECT
-                                cast(column_name as varchar(250)) as column_name
-                            from 
+                                CAST(column_name AS VARCHAR(250)) AS column_name,
+                                data_type
+                            FROM 
                                 information_schema.columns 
                             WHERE 
                                 table_name = target_table
-			    ORDER BY
-				1
+                            ORDER BY
+                                1
                         ) tgt
                     JOIN
                         (
                             SELECT
-                                cast(column_name as varchar(250)) as column_name
-                            from 
+                                CAST(column_name AS VARCHAR(250)) AS column_name,
+                                data_type
+                            FROM 
                                 information_schema.columns 
                             WHERE 
                                 table_name = source_table
-			    ORDER BY
-				1
+                            ORDER BY
+                                1
                         ) src
                         ON tgt.column_name = src.column_name
+                        AND tgt.data_type = src.data_type
         LOOP
           /*converts the cursor to a string*/
           col_txt_var = col_nm_cursor;
         
-          /*appends the column name list with the name from the current loop*/
-          update tmp_column_name_list_table_4383acad9Dk2
-          set test_col = CASE 
+          /*appends the column name list with the name FROM the current loop*/
+          UPDATE tmp_column_name_list_table_4383acad9Dk2
+          SET test_col = CASE 
                               /*skips the blank column name in the first pass*/
                               WHEN test_col = '' 
                                 /*string function removes the leading and trailing parentheses*/
-                                THEN 'src.'||substring(col_txt_var, 2, (select len(col_txt_var) - 2)) 
+                                THEN 'src.'||substring(col_txt_var, 2, (SELECT len(col_txt_var) - 2)) 
                                 /*adds a comma in between the values*/
-                                ELSE test_col || ', ' || 'src.'||substring(col_txt_var, 2, (select len(col_txt_var) - 2)) 
+                                ELSE test_col || ', ' || 'src.'||substring(col_txt_var, 2, (SELECT len(col_txt_var) - 2)) 
                           END;
         END LOOP;
 
-        colArrayPrefixVar = (select * FROM tmp_column_name_list_table_4383acad9Dk2);
+        colArrayPrefixVar = (SELECT * FROM tmp_column_name_list_table_4383acad9Dk2);
         /*a second version of the column list that removes the table prefix*/
         colArrayVar = (SELECT REPLACE(colArrayPrefixVar, 'src.', ''));
 
@@ -82,7 +89,7 @@ IF UPPER(source_dml_indicator) = 'X' THEN finishInsertVar = '1=1';
 END IF;
 
 /*for the end of the delete statement, this will create different lines based on
-whether the call passed a real version id or the same value as the key*/
+whether the call passed a real version id or the same value AS the key*/
 IF target_version = target_key THEN finishDeleteVar = '1=1';
     ELSIF source_version = source_key THEN finishDeleteVar = '1=1';
     ELSE finishDeleteVar = 'src.'||source_version || ' >= maxtgt.tgt_version_col';
@@ -125,6 +132,7 @@ FROM
     ||' )
 ;'
 ;
+
 EXECUTE
 '/*inserts source data into target table, only inserting new rows*/
 INSERT INTO ' || target_table ||
