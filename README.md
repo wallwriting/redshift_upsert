@@ -33,7 +33,7 @@ Copy the contents of upsert_sp.sql into a Redshift query editor (remember that f
 Copy the contents of upsert_tester.sql to create a sample source and target table with sample data in order to test out the procedure. The upsert_tester.sql also has the call statement to run the proc against the test tables.
 
 
-This is a work in progress. Currently, there are limitations that need to be improved on before this can be used in a real-world environment:
+There are limitations that need to be addressed:
 
 - Join columns have to be of matching datatypes*
 - The matching columns between the source and target tables have to have the same names*
