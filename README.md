@@ -43,7 +43,7 @@ There are limitations that need to be addressed:
 - Currently requires all three matching fields (primary key, version id, dml indicator) to have arguments passed. Use these workarounds when you don't have them:
     - If there is no dml indicator, pass the value 'X' for the argument (case doesn't matter).
     - If there is no version id, pass the same vaule for key.**
-
+- Currently doesn't take advantage of the sort key for performance. A feature will have to be added where it checks the system table for a sort key and passes the min/max value of that column from the staging table into the DELETE query in order to leverage zone maps. The sort key should be irrelevant for the INSERT portion of the proc.
 
 [* I'm still undecided whether there are problems or are actually things that should be enforced as a best practice]
 
