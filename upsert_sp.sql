@@ -1,181 +1,195 @@
-CREATE OR REPLACE PROCEDURE sp_upsert_tester()
+CREATE OR REPLACE PROCEDURE sp_upsert(
+                                target_table IN CHARACTER VARYING, 
+                                target_key IN CHARACTER VARYING, 
+                                target_version IN CHARACTER VARYING, 
+                                source_table IN CHARACTER VARYING, 
+                                source_key IN CHARACTER VARYING, 
+                                source_version IN CHARACTER VARYING, 
+                                source_dml_indicator IN CHARACTER VARYING
+                                )
+--DROP PROCEDURE upsert_sp(target_table IN CHARACTER VARYING, target_key IN CHARACTER VARYING, target_version IN CHARACTER VARYING, source_table IN CHARACTER VARYING, source_key IN CHARACTER VARYING, source_version IN CHARACTER VARYING, source_dml_indicator IN CHARACTER VARYING)
+
 AS $$
-DECLARE 
-    cursor_var int;
+DECLARE
+    insert_var CHARACTER VARYING;
+    update_var CHARACTER VARYING;
+    col_nm_cursor RECORD;
+    col_txt_var CHARACTER VARYING;
+    colArrayVar CHARACTER VARYING;
+    colArrayPrefixVar CHARACTER VARYING;
+    finishInsertVar CHARACTER VARYING;
+--    tmpTableName CHARACTER VARYING;
 
 BEGIN
 
-
-
-/*creates the two test tables*/
-drop table if exists tgt_test_short;
-
-create table tgt_test_short
-    (
-    id   varchar(50),
-    version   varchar(10),
-    txt_value   varchar(50),
-    mismatch_col  int
-    )
-    sortkey(id)
-;
-
-drop table if exists src_test_short;
-
-create table src_test_short
-    (
-    id   varchar(50),
-    txt_value   varchar(50),
-    version   varchar(10),
-    dml_indicator varchar(10),
-    mismatch_col  varchar(50)
-    )
-    SORTKEY(id)
-;
-
-
-/*inserts values into the target table.
-This would be how the data looked on first insert, prior to updates coming in*/
-insert into tgt_test_short values ('123', '1', 'original insert', -99);
-insert into tgt_test_short values ('456', '1', 'original insert', -98);
-insert into tgt_test_short values ('789', '1', 'original insert', -97);
-insert into tgt_test_short values ('101112', '1', 'original insert', -96);
-
-
-/*this includes a delete, a multi-update, 
-and an insert where the version is incorrect (it reused the original version number)*/
-insert into src_test_short values ('123', '1st update', '2', 'U', '-99');
-insert into src_test_short values ('456', '1st update', '2', 'U', '-98');
-insert into src_test_short values ('456', '2nd update', '3', 'U', '-97');
-insert into src_test_short values ('789', 'delete', '2', 'D', '-96');
-insert into src_test_short values ('101112', 'accidental second insert', '1', 'I', '-95');
-insert into src_test_short values ('131415', '1st insert', '1', 'I', '-95');
-
-
-/*creates the two test tables*/
-drop table if exists tgt_test_long;
-
-create table tgt_test_long
-    (
-    id   varchar(50),
-    version   varchar(10),
-    txt_value   varchar(50),
-    mismatch_col  int
-    )
-    sortkey(id)
-;
-
-drop table if exists src_test_long;
-
-create table src_test_long
-    (
-    id   varchar(50),
-    txt_value   varchar(50),
-    version   varchar(10),
-    dml_indicator varchar(10),
-    mismatch_col  varchar(50)
-    )
-    SORTKEY(id)
-;
-
-/*inserts values into the target table.
-This would be how the data looked on first insert, prior to updates coming in*/
-insert into tgt_test_long values ('123', '1', 'original insert', -99);
-insert into tgt_test_long values ('456', '1', 'original insert', -98);
-insert into tgt_test_long values ('789', '1', 'original insert', -97);
-insert into tgt_test_long values ('101112', '1', 'original insert', -96);
-
-
-/*this includes a delete, a multi-update, 
-and an insert where the version is incorrect (it reused the original version number)*/
-insert into src_test_long values ('123', '1st update', '2', 'U', '-99');
-insert into src_test_long values ('456', '1st update', '2', 'U', '-98');
-insert into src_test_long values ('456', '2nd update', '3', 'U', '-97');
-insert into src_test_long values ('789', 'delete', '2', 'D', '-96');
-insert into src_test_long values ('101112', 'accidental second insert', '1', 'I', '-95');
-insert into src_test_long values ('131415', '1st insert', '1', 'I', '-95');
+-- tmpTableName = 
+--                 (
+--                 SELECT
+--                     'tmp_column_name_list_table_'
+--                     ||                    
+--                     REPLACE
+--                         (CAST(pg_backend_pid() AS VARCHAR(25)) 
+--                         || 
+--                         CAST
+--                             (CAST(EXTRACT('epoch' FROM current_timestamp) AS FLOAT)
+--                                 AS VARCHAR(35)), '.', ''
+--                         )
+--                 )
+-- ;
 
 
 
+    /*Creates the temp table that will hold the column list. Table has arbitrary characters at the end
+    to decrease the chance of duplicates. This value is not parameterized because it would require the
+    queries to run AS an EXECUTE statement with quotes everywhere, like we are forced to do with the
+    DELETE and INSERT statements. Convenience was traded for readability. To replace the table name,
+    just do a find/replace in a text editor*/ 
+--    DROP TABLE IF EXISTS tmp_column_name_list_table_4383acad9Dk2;
+    CREATE TEMP TABLE tmp_column_name_list_table_4383acad9Dk2
+        (test_col VARCHAR(2500));
+    INSERT INTO tmp_column_name_list_table_4383acad9Dk2 SELECT '';
+
+    /*loops through the list of columns to 
+    concatenate the column names into one list*/
+    FOR col_nm_cursor IN 
+                    /*gets column list FROM the system table
+                    The join ensures only the matching column
+                    names are involved in the upsert*/
+                    SELECT 
+                        tgt.column_name
+                    FROM
+                        (
+                            SELECT
+                                CAST(column_name AS VARCHAR(250)) AS column_name,
+                                data_type
+                            FROM 
+                                information_schema.columns 
+                            WHERE 
+                                table_name = target_table
+                            ORDER BY
+                                1
+                        ) tgt
+                    JOIN
+                        (
+                            SELECT
+                                CAST(column_name AS VARCHAR(250)) AS column_name,
+                                data_type
+                            FROM 
+                                information_schema.columns 
+                            WHERE 
+                                table_name = source_table
+                            ORDER BY
+                                1
+                        ) src
+                        ON tgt.column_name = src.column_name
+                        AND tgt.data_type = src.data_type
+        LOOP
+          /*converts the cursor to a string*/
+          col_txt_var = col_nm_cursor;
+        
+          /*appends the column name list with the name FROM the current loop*/
+          UPDATE tmp_column_name_list_table_4383acad9Dk2
+          SET test_col = CASE 
+                              /*skips the blank column name in the first pass*/
+                              WHEN test_col = '' 
+                                /*string function removes the leading and trailing parentheses*/
+                                THEN 'src.'||substring(col_txt_var, 2, (SELECT len(col_txt_var) - 2)) 
+                                /*adds a comma in between the values*/
+                                ELSE test_col || ', ' || 'src.'||substring(col_txt_var, 2, (SELECT len(col_txt_var) - 2)) 
+                          END;
+        END LOOP;
+
+        colArrayPrefixVar = (SELECT * FROM tmp_column_name_list_table_4383acad9Dk2);
+        /*a second version of the column list that removes the table prefix*/
+        colArrayVar = (SELECT REPLACE(colArrayPrefixVar, 'src.', ''));
+
+/*This ends the column list generating section*/
 
 
-drop table if exists tmp_number_series;
-create TEMP table tmp_number_series
-(
-/*starts at 0 and increments by 1*/
-/*use this if you want to be able to override the identity value*/
---sequence_number bigint identity(0,1) NOT NULL,
-/*use this if you don't want to be able to override*/
-sequence_number BIGINT GENERATED BY DEFAULT AS IDENTITY(0,1),
-dummy_col smallint
-)
-distkey(sequence_number)
-sortkey(sequence_number)
-;
 
-INSERT INTO tmp_number_series (dummy_col)
-        select 1 as counter
-        UNION ALL
-        select 2 as counter
-        UNION ALL
-        select 3 as counter
-        UNION ALL
-        select 4 as counter
-        UNION ALL
-        select 5 as counter
-        UNION ALL
-        select 6 as counter
-        UNION ALL
-        select 7 as counter
-        UNION ALL
-        select 8 as counter
-        UNION ALL
-        select 9 as counter
-        UNION ALL
-        select 10 as counter
-;
+/*hard codes the dml indiciator--this will eventually need to be flexible*/
+insert_var = 'I';
+update_var = 'U';
 
-for cursor_var in 1..27 LOOP
+/*for the end of the insert statement, this will create different lines based on
+whether the call passed a real dml indicator or a value of X*/
+IF UPPER(source_dml_indicator) = 'X' THEN finishInsertVar = '1=1';
+    ELSE finishInsertVar = 'src.' || source_dml_indicator || ' IN(' || quote_literal(insert_var) || ', ' || quote_literal(update_var) || ')';
+END IF;
 
-    insert into tmp_number_series (dummy_col)
-    select 1 from tmp_number_series
-    ;
-
-END LOOP;
+/*for the end of the delete statement, this will create different lines based on
+whether the call passed a real version id or the same value AS the key*/
+-- IF target_version = target_key THEN finishDeleteVar = '1=1';
+--     ELSIF source_version = source_key THEN finishDeleteVar = '1=1';
+--     ELSE finishDeleteVar = 'src.'||source_version || ' >= maxtgt.tgt_version_col';
+-- END IF;
 
 
-INSERT INTO tgt_test_long (id, version, txt_value, mismatch_col)
-SELECT
-    nums.sequence_number,
-    '1',
-    'large initial load',
-    '-70'
+
+/*This starts the actual delete and insert*/
+EXECUTE
+'/*deletes any existing target rows that will change in the batch*/
+DELETE
 FROM
-    tmp_number_series nums
+	 ' || target_table || 
+' WHERE 
+	 ' || target_key || ' IN
+    /*gets target table_key that have a version number lower than the source*/
+    (
+        SELECT
+            maxtgt.'||source_key ||
+         ' FROM
+            ' || source_table || ' as maxtgt 
+    )
+;'
 ;
 
-INSERT INTO src_test_long (id, txt_value, version, dml_indicator, mismatch_col)
-SELECT
-    nums.sequence_number,
-    '1st large batch',
-    '2',
-    'U',
-    -70
-FROM
-    tmp_number_series nums
-LIMIT 200000
+
+EXECUTE
+    '/*In cases where there are multiple transactions in the incoming batch
+    this will delete all but the latest record*/
+    DELETE FROM ' || source_table || '
+    WHERE EXISTS
+        (     
+                SELECT 1
+                FROM
+                    /*This finds the max version number for each id*/
+                    (
+                        SELECT
+                            src.' || source_key || ', 
+                            MAX(src.' || source_version || ') AS max_version_col  
+                        FROM '
+                            || source_table || ' src 
+                        GROUP BY '
+                            || source_key ||  ' 
+                    ) mx
+                  WHERE ' 
+                      || source_table || '.' || source_key || ' = mx.' || source_key || '  
+                      /*deletes anything that is not the max version number*/
+                      AND ' || source_table || '.' || source_version || ' != mx.max_version_col 
+        )
+    ;'
+
 ;
 
 
---call sp_upsert_tester();
---select * FROM tgt_test_short;
---select * FROM src_test_short;
---select count(1) FROM src_test_long;
---select count(1) FROM tgt_test_long;
---call sp_upsert('tgt_test_short', 'id', 'version', 'src_test_short', 'id', 'version', 'dml_indicator');
---call sp_upsert('tgt_test_long', 'id', 'version', 'src_test_long', 'id', 'version', 'dml_indicator');
+EXECUTE
+    '/*inserts source data into target table, only inserting new rows*/
+    INSERT INTO ' || target_table || '
+        (' || colArrayVar || ') 
+        SELECT 
+        /*replace this with whatever you need to insert*/ '
+        || colArrayPrefixVar || ' 
+        FROM
+        /*source*/ ' 
+        || source_table || ' src
+        WHERE 
+            /*only inserts inserts and updates*/ ' 
+            || finishInsertVar || ' 
+    ;'
+
+;
+
 END;
 $$ LANGUAGE plpgsql
 SECURITY INVOKER;
-
-
