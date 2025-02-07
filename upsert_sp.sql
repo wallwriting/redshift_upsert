@@ -44,7 +44,7 @@ BEGIN
     queries to run AS an EXECUTE statement with quotes everywhere, like we are forced to do with the
     DELETE and INSERT statements. Convenience was traded for readability. To replace the table name,
     just do a find/replace in a text editor*/ 
---    DROP TABLE IF EXISTS tmp_column_name_list_table_4383acad9Dk2;
+    DROP TABLE IF EXISTS tmp_column_name_list_table_4383acad9Dk2;
     CREATE TEMP TABLE tmp_column_name_list_table_4383acad9Dk2
         (test_col VARCHAR(2500));
     INSERT INTO tmp_column_name_list_table_4383acad9Dk2 SELECT '';
